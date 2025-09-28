@@ -35,7 +35,7 @@ export class Player {
   private attackTarget: THREE.Vector3 | null = null;
   private attackRange: number = 2.5;
   private attackDamage: number = 25;
-  private attackCooldownDuration: number = 0.5; // Seconds between attacks
+  private attackCooldownDuration: number = 0.2; // Seconds between attacks
   private attackAnimationDuration: number = 1.0; // Duration of attack animation
   private attackStateStartTime: number = 0;
   private damageDealtThisAttack: boolean = false;
