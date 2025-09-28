@@ -37,7 +37,7 @@ export class Player {
 
   public async initialize(): Promise<void> {
     try {
-      const gltf = await this.loader.loadAsync('/public/models/player.glb');
+      const gltf = await this.loader.loadAsync('/models/player.glb');
       this.model = gltf.scene;
 
       // Set initial position
