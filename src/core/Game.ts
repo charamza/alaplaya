@@ -26,6 +26,9 @@ export class Game {
 
     // Handle window resize
     window.addEventListener('resize', this.onWindowResize.bind(this));
+
+    // Handle mouse clicks for enemy interaction
+    this.renderer.domElement.addEventListener('click', this.onMouseClick.bind(this));
   }
 
   private onWindowResize(): void {
@@ -34,6 +37,14 @@ export class Game {
 
     this.sceneManager.resize(width, height);
     this.renderer.setSize(width, height);
+  }
+
+  private onMouseClick(event: MouseEvent): void {
+    // Only handle left clicks
+    if (event.button === 0) {
+      const worldScene = this.sceneManager.getWorldScene();
+      worldScene.handleMouseClick(event, this.sceneManager.camera, this.sceneManager.scene);
+    }
   }
 
   public async initialize(): Promise<void> {
@@ -77,6 +88,7 @@ export class Game {
   public dispose(): void {
     this.stop();
     window.removeEventListener('resize', this.onWindowResize.bind(this));
+    this.renderer.domElement.removeEventListener('click', this.onMouseClick.bind(this));
     this.sceneManager.dispose();
     this.inputManager.dispose();
     this.renderer.dispose();

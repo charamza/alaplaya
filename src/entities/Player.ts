@@ -16,7 +16,7 @@ export class Player {
   // Jumping properties
   private isOnGround = true;
   private jumpForce = 15;
-  private gravity = -30;
+  private gravity = -50;
   
   // Animation properties
   private animations: { [key: string]: THREE.AnimationAction } = {};
@@ -26,8 +26,20 @@ export class Player {
     run: 'run',
     runBack: 'run_back', 
     runLeft: 'run_left',
-    runRight: 'run_right'
+    runRight: 'run_right',
+    attack: 'attack'
   };
+
+  // Attack properties
+  private isAttacking: boolean = false;
+  private attackTarget: THREE.Vector3 | null = null;
+  private attackRange: number = 2.5;
+  private attackDamage: number = 25;
+  private attackSpeed: number = 1.5; // Seconds between attacks
+  private lastAttackTime: number = 0;
+  private attackAnimationDuration: number = 1.0; // Duration of attack animation in seconds
+  private hasDealtDamageThisAttack: boolean = false;
+  private attackStartTime: number = 0;
 
   constructor() {
     this.position = new THREE.Vector3(0, 0, 0);
@@ -122,6 +134,9 @@ export class Player {
             this.animations.run = action;
             console.log(`Mapped animation: run -> ${clip.name}`);
           }
+        } else if (lowerName.includes('attack') || lowerName.includes('punch') || lowerName.includes('hit')) {
+          this.animations.attack = action;
+          console.log(`Mapped animation: attack -> ${clip.name}`);
         }
       }
     });
@@ -133,7 +148,7 @@ export class Player {
     }
   }
 
-  private playAnimation(animationName: string): void {
+  private playAnimation(animationName: string, loop: boolean = true): void {
     if (!this.animations[animationName] || this.currentAnimation === animationName) {
       return;
     }
@@ -145,8 +160,21 @@ export class Player {
       oldAction.fadeOut(0.2);
     }
 
-    newAction.reset().fadeIn(0.2).play();
+    newAction.reset().fadeIn(0.2);
+    newAction.setLoop(loop ? THREE.LoopRepeat : THREE.LoopOnce, loop ? Infinity : 1);
+    newAction.play();
     this.currentAnimation = animationName;
+
+    // Handle attack animation completion
+    if (animationName === 'attack' && !loop) {
+      newAction.clampWhenFinished = true;
+      
+      // Set animation duration to match our attack speed
+      newAction.setDuration(this.attackAnimationDuration);
+      
+      // Record when attack started for manual timing
+      this.attackStartTime = Date.now() / 1000;
+    }
   }
 
   private lerpAngle(from: number, to: number, t: number): number {
@@ -164,8 +192,94 @@ export class Player {
   public update(deltaTime: number, inputManager: InputManager, camera?: ThirdPersonCamera, terrain?: Terrain, collisionManager?: CollisionManager): void {
     if (!this.model) return;
 
-    // Get movement input
+    // Check if attack animation is finished
+    if (this.isAttacking && this.attackStartTime > 0) {
+      const currentTime = Date.now() / 1000;
+      if (currentTime - this.attackStartTime >= this.attackAnimationDuration) {
+        this.isAttacking = false;
+        this.attackStartTime = 0;
+        console.log('Attack finished, player can move again');
+      }
+    }
+
+    // If attacking, don't process movement input
+    if (this.isAttacking) {
+      // Apply gravity during attack
+      this.velocity.y += this.gravity * deltaTime;
+      
+      // Apply vertical movement
+      this.position.y += this.velocity.y * deltaTime;
+
+      // Handle ground collision during attack
+      let groundHeight = 0;
+      if (terrain) {
+        groundHeight = terrain.getHeightAt(this.position.x, this.position.z);
+      }
+      if (collisionManager) {
+        const collisionHeight = collisionManager.getHeightAt(this.position.x, this.position.z, 0.5, this.position.y);
+        groundHeight = Math.max(groundHeight, collisionHeight);
+      }
+      if (this.position.y <= groundHeight) {
+        this.position.y = groundHeight;
+        this.velocity.y = 0;
+        this.isOnGround = true;
+      }
+
+      // Update model position and animations
+      this.model.position.copy(this.position);
+      if (this.mixer) {
+        this.mixer.update(deltaTime);
+      }
+      return;
+    }
+
+    // Handle movement towards attack target
+    if (this.attackTarget && !this.isAttacking) {
+      const distance = this.position.distanceTo(this.attackTarget);
+      if (distance > this.attackRange) {
+        // Move towards target
+        const direction = this.attackTarget.clone().sub(this.position).normalize();
+        const speed = this.speed * deltaTime;
+        
+        // Check collision before moving
+        const newX = this.position.x + direction.x * speed;
+        const newZ = this.position.z + direction.z * speed;
+        
+        let canMoveX = true;
+        let canMoveZ = true;
+        
+        if (collisionManager) {
+          canMoveX = !collisionManager.checkHorizontalCollision(newX, this.position.z, this.position.y, 0.5, 2);
+          canMoveZ = !collisionManager.checkHorizontalCollision(this.position.x, newZ, this.position.y, 0.5, 2);
+        }
+        
+        if (canMoveX) this.position.x = newX;
+        if (canMoveZ) this.position.z = newZ;
+        
+        // Face the target
+        const targetRotation = Math.atan2(direction.x, direction.z);
+        this.model.rotation.y = this.lerpAngle(this.model.rotation.y, targetRotation, 0.1);
+        
+        // Play run animation
+        this.playAnimation('run');
+      } else {
+        // In range, start attack
+        this.startAttack(this.attackTarget);
+      }
+    }
+
+    // Get movement input (only if not moving to attack target)
     const movement = inputManager.getMovementInput();
+    const hasMovementInput = movement.forward !== 0 || movement.right !== 0;
+
+    // If player gives movement input while moving to target or attacking, cancel attack target
+    if ((this.attackTarget || this.isAttacking) && hasMovementInput) {
+      console.log('Canceling attack due to manual movement input');
+      this.attackTarget = null;
+      this.isAttacking = false;
+      this.hasDealtDamageThisAttack = false;
+      this.attackStartTime = 0;
+    }
 
     // Handle jumping
     if (movement.up > 0 && this.isOnGround) {
@@ -179,7 +293,7 @@ export class Player {
     // Calculate horizontal movement direction based on camera orientation
     const horizontalDirection = new THREE.Vector3(0, 0, 0);
     
-    if (camera && (movement.forward !== 0 || movement.right !== 0)) {
+    if (camera && hasMovementInput) {
       const forward = camera.getForwardDirection();
       const right = camera.getRightDirection();
       
@@ -189,10 +303,10 @@ export class Player {
       horizontalDirection.normalize();
     }
 
-    // Determine animation based on movement input (relative to player, not camera)
+    // Determine animation based on movement input (only if not moving to attack target and not attacking)
     let targetAnimation = 'idle';
     
-    if (movement.forward !== 0 || movement.right !== 0) {
+    if (hasMovementInput) {
       // Determine primary movement direction for animation
       if (Math.abs(movement.forward) > Math.abs(movement.right)) {
         // Forward/backward movement is stronger
@@ -332,6 +446,85 @@ export class Player {
     if (this.model) {
       this.model.position.copy(position);
     }
+  }
+
+  public startAttack(targetPosition: THREE.Vector3): boolean {
+    const currentTime = Date.now() / 1000; // Convert to seconds
+    
+    if (this.isAttacking) {
+      return false; // Already attacking
+    }
+
+    // Check attack cooldown
+    if (currentTime - this.lastAttackTime < this.attackSpeed) {
+      return false; // Still on cooldown
+    }
+
+    const distance = this.position.distanceTo(targetPosition);
+    if (distance > this.attackRange) {
+      // Move towards target first
+      this.attackTarget = targetPosition.clone();
+      return false; // Not in range yet
+    }
+
+    // In range, start attack
+    this.isAttacking = true;
+    this.attackTarget = targetPosition.clone();
+    this.lastAttackTime = currentTime;
+    this.hasDealtDamageThisAttack = false; // Reset damage flag
+    this.attackStartTime = 0; // Will be set in playAnimation
+    
+    // Face the target
+    if (this.model) {
+      const direction = targetPosition.clone().sub(this.position).normalize();
+      const targetRotation = Math.atan2(direction.x, direction.z);
+      this.model.rotation.y = targetRotation;
+    }
+
+    // Play attack animation
+    this.playAnimation('attack', false);
+    return true; // Attack started
+  }
+
+  public isInAttackRange(targetPosition: THREE.Vector3): boolean {
+    return this.position.distanceTo(targetPosition) <= this.attackRange;
+  }
+
+  public isCurrentlyAttacking(): boolean {
+    return this.isAttacking;
+  }
+
+  public getAttackDamage(): number {
+    return this.attackDamage;
+  }
+
+  public getAttackTarget(): THREE.Vector3 | null {
+    return this.attackTarget ? this.attackTarget.clone() : null;
+  }
+
+  public cancelAttack(): void {
+    this.isAttacking = false;
+    this.attackTarget = null;
+    this.hasDealtDamageThisAttack = false;
+    this.attackStartTime = 0;
+  }
+
+  public shouldDealDamage(): boolean {
+    return this.isAttacking && !this.hasDealtDamageThisAttack;
+  }
+
+  public markDamageDealt(): void {
+    this.hasDealtDamageThisAttack = true;
+  }
+
+  public canAttack(): boolean {
+    const currentTime = Date.now() / 1000;
+    const timeSinceLastAttack = currentTime - this.lastAttackTime;
+    const canAttack = !this.isAttacking && (timeSinceLastAttack >= this.attackSpeed);
+    
+    console.log(`canAttack check: isAttacking=${this.isAttacking}, timeSinceLastAttack=${timeSinceLastAttack.toFixed(2)}s, attackSpeed=${this.attackSpeed}s, canAttack=${canAttack}`);
+    
+    return canAttack;
   }
 
   public dispose(): void {
