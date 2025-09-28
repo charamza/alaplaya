@@ -79,6 +79,11 @@ export class WorldScene {
     // Spawn some test slimes
     await this.spawnTestSlimes();
 
+    // Set up player callback to check if target is alive
+    this.player.setIsTargetAliveCallback((position: THREE.Vector3) => {
+      return this.isEnemyAliveAtPosition(position);
+    });
+
     console.log('Scene objects added:', {
       terrain: !!this.terrain.getMesh(),
       sky: !!this.sky.getMesh(),
@@ -168,6 +173,11 @@ export class WorldScene {
       const enemyPos = enemy.getPosition();
       return enemyPos.distanceTo(position) <= threshold;
     });
+  }
+
+  private isEnemyAliveAtPosition(position: THREE.Vector3): boolean {
+    const enemy = this.findEnemyAtPosition(position);
+    return enemy ? enemy.isAliveCheck() : false;
   }
 
   public getSceneGroup(): THREE.Group {
