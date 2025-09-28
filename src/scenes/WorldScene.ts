@@ -3,6 +3,8 @@ import { InputManager } from '@/systems/InputManager';
 import { Player } from '@/entities/Player';
 import { Terrain } from '@/entities/Terrain';
 import { Sky } from '@/entities/Sky';
+import { CollisionManager } from '@/systems/CollisionManager';
+import { ThirdPersonCamera } from '@/systems/ThirdPersonCamera';
 
 export class WorldScene {
   private sceneGroup: THREE.Group;
@@ -12,12 +14,14 @@ export class WorldScene {
   private ambientLight: THREE.AmbientLight;
   private directionalLight: THREE.DirectionalLight;
   private debugCube: THREE.Mesh;
+  private collisionManager: CollisionManager;
 
   constructor() {
     this.sceneGroup = new THREE.Group();
     this.player = new Player();
     this.terrain = new Terrain();
     this.sky = new Sky();
+    this.collisionManager = new CollisionManager();
 
     // Setup lighting
     this.ambientLight = new THREE.AmbientLight(0x404040, 0.6); // Stronger ambient light
@@ -61,6 +65,13 @@ export class WorldScene {
     this.sceneGroup.add(this.player.getModel() as THREE.Object3D);
     this.sceneGroup.add(this.debugCube); // Add debug cube
 
+    // Add debug cube to collision manager
+    this.collisionManager.addCollisionBox({
+      position: this.debugCube.position.clone(),
+      size: new THREE.Vector3(2, 2, 2),
+      mesh: this.debugCube
+    });
+
     console.log('Scene objects added:', {
       terrain: !!this.terrain.getMesh(),
       sky: !!this.sky.getMesh(),
@@ -81,8 +92,8 @@ export class WorldScene {
     });
   }
 
-  public update(deltaTime: number, inputManager: InputManager): void {
-    this.player.update(deltaTime, inputManager);
+  public update(deltaTime: number, inputManager: InputManager, camera?: ThirdPersonCamera): void {
+    this.player.update(deltaTime, inputManager, camera, this.terrain, this.collisionManager);
   }
 
   public getSceneGroup(): THREE.Group {
@@ -97,10 +108,17 @@ export class WorldScene {
     return this.terrain;
   }
 
+  public getCollisionManager(): CollisionManager {
+    return this.collisionManager;
+  }
+
   public dispose(): void {
     this.player.dispose();
     this.terrain.dispose();
     this.sky.dispose();
+
+    // Clear collision manager
+    this.collisionManager.clear();
 
     // Dispose lights
     this.sceneGroup.remove(this.ambientLight);

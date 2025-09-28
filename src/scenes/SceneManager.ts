@@ -35,13 +35,14 @@ export class SceneManager {
   }
 
   public update(deltaTime: number, inputManager: InputManager): void {
-    this.worldScene.update(deltaTime, inputManager);
-    
-    // Update third person camera with player position
+    // Update third person camera with player position first
     const player = this.worldScene.getPlayer();
     const playerPosition = player.getPosition();
     const terrain = this.worldScene.getTerrain(); // Get terrain reference
     this.thirdPersonCamera.update(deltaTime, inputManager, playerPosition, terrain);
+    
+    // Then update world scene with camera reference
+    this.worldScene.update(deltaTime, inputManager, this.thirdPersonCamera);
   }
 
   public resize(width: number, height: number): void {
