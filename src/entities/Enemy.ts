@@ -84,15 +84,22 @@ export abstract class Enemy {
     }
   }
 
-  public update(deltaTime: number): void {
+  public update(deltaTime: number, terrain?: any): void {
     if (this.mixer) {
       this.mixer.update(deltaTime);
+    }
+
+    // Update position to follow terrain height
+    if (terrain && this.model) {
+      const terrainHeight = terrain.getHeightAt(this.position.x, this.position.z);
+      this.position.y = terrainHeight;
+      this.model.position.copy(this.position);
     }
 
     // Update selection ring position
     if (this.selectionRing && this.model) {
       this.selectionRing.position.copy(this.position);
-      this.selectionRing.position.y = 0.01; // Slightly above ground
+      this.selectionRing.position.y = this.position.y + 0.01; // Slightly above ground/terrain
     }
   }
 

@@ -4,6 +4,7 @@ export class Terrain {
   private mesh: THREE.Mesh;
   private waterMeshes: THREE.Mesh[] = [];
   private heightMap: number[][] = [];
+  private waterMaterial: THREE.ShaderMaterial | null = null;
 
   constructor() {
     // Create a plane for terrain with more subdivisions for better detail and smoother movement
@@ -105,16 +106,16 @@ export class Terrain {
         // Set vertex colors based on height and position for terrain variation
         const colorIndex = vertexIndex;
 
-        if (height < -0.5) {
+        if (height < -1) {
           // Deep water areas - dark blue
           colors[colorIndex] = 0.2;     // R
           colors[colorIndex + 1] = 0.3; // G
           colors[colorIndex + 2] = 0.5; // B
         } else if (height < 0) {
-          // Shallow water/mud - brown
-          colors[colorIndex] = 0.4;     // R
-          colors[colorIndex + 1] = 0.3; // G
-          colors[colorIndex + 2] = 0.2; // B
+          // Shallow water/sand - yellow  
+          colors[colorIndex] = 226/255;     // R
+          colors[colorIndex + 1] = 202/255; // G
+          colors[colorIndex + 2] = 118/255; // B
         } else if (height < 1) {
           // Grass/low areas - green
           colors[colorIndex] = 0.3;     // R
@@ -149,40 +150,93 @@ export class Terrain {
   }
 
   private createWaterBodies(): void {
-    // Create a few water bodies at lower elevations
-    const waterPositions = [
-      { x: -20, z: -20, size: 8 },
-      { x: 15, z: 25, size: 6 },
-      { x: 35, z: -10, size: 5 },
-      { x: -35, z: 15, size: 7 }
-    ];
-
-    waterPositions.forEach(({ x, z, size }) => {
-      // Only create water if the terrain is low enough
-      const terrainHeight = this.getHeightAt(x, z);
-      if (terrainHeight < 0.5) {
-        const waterGeometry = new THREE.CircleGeometry(size, 16);
-        const waterMaterial = new THREE.MeshLambertMaterial({
-          color: 0x4a90e2,
-          transparent: true,
-          opacity: 0.7,
-          side: THREE.DoubleSide
-        });
-
-        const waterMesh = new THREE.Mesh(waterGeometry, waterMaterial);
-        waterMesh.rotation.x = -Math.PI / 2;
-        waterMesh.position.set(x, terrainHeight + 0.1, z); // Slightly above terrain
-        waterMesh.receiveShadow = false;
-        waterMesh.castShadow = false;
-
-        this.waterMeshes.push(waterMesh);
-      }
+    // Create one large water body covering the entire terrain
+    const waterGeometry = new THREE.PlaneGeometry(100, 100, 1, 1);
+    
+    // Create water shader material
+    const waterMaterial = new THREE.ShaderMaterial({
+      uniforms: {
+        time: { value: 0 },
+        color1: { value: new THREE.Color(0x006994) }, // Deep blue
+        color2: { value: new THREE.Color(0x4a90e2) }, // Light blue
+        waveSpeed: { value: 0.5 },
+        waveScale: { value: 0.02 },
+        opacity: { value: 0.8 }
+      },
+      vertexShader: `
+        uniform float time;
+        uniform float waveSpeed;
+        uniform float waveScale;
+        varying vec2 vUv;
+        varying vec3 vPosition;
+        
+        void main() {
+          vUv = uv;
+          vPosition = position;
+          
+          // Create gentle wave animation
+          vec3 newPosition = position;
+          newPosition.z += sin(position.x * waveScale + time * waveSpeed) * 0.1;
+          newPosition.z += cos(position.y * waveScale * 1.5 + time * waveSpeed * 0.8) * 0.05;
+          
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(newPosition, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform float time;
+        uniform vec3 color1;
+        uniform vec3 color2;
+        uniform float waveSpeed;
+        uniform float waveScale;
+        uniform float opacity;
+        varying vec2 vUv;
+        varying vec3 vPosition;
+        
+        void main() {
+          // Create moving wave pattern
+          float wave1 = sin(vPosition.x * waveScale * 2.0 + time * waveSpeed) * 0.5 + 0.5;
+          float wave2 = cos(vPosition.y * waveScale * 1.5 + time * waveSpeed * 0.7) * 0.5 + 0.5;
+          float wave3 = sin((vPosition.x + vPosition.y) * waveScale + time * waveSpeed * 1.2) * 0.5 + 0.5;
+          
+          // Combine waves for color variation
+          float wavePattern = (wave1 + wave2 + wave3) / 3.0;
+          
+          // Mix colors based on wave pattern
+          vec3 finalColor = mix(color1, color2, wavePattern);
+          
+          // Add some fresnel-like effect based on UV
+          float fresnel = pow(1.0 - dot(normalize(vec3(0.0, 0.0, 1.0)), normalize(vec3(vUv - 0.5, 1.0))), 2.0);
+          finalColor = mix(finalColor, color2, fresnel * 0.3);
+          
+          gl_FragColor = vec4(finalColor, opacity);
+        }
+      `,
+      transparent: true,
+      side: THREE.DoubleSide
     });
+
+    const waterMesh = new THREE.Mesh(waterGeometry, waterMaterial);
+    waterMesh.rotation.x = -Math.PI / 2;
+    waterMesh.position.set(0, -0.5, 0); // Position below terrain level
+    waterMesh.receiveShadow = false;
+    waterMesh.castShadow = false;
+
+    this.waterMeshes.push(waterMesh);
+    
+    // Store material for animation updates
+    this.waterMaterial = waterMaterial;
   }
 
   public initialize(): void {
     // Additional initialization if needed
     console.log('Terrain initialized with', this.waterMeshes.length, 'water bodies');
+  }
+
+  public update(deltaTime: number): void {
+    // Update water shader animation
+    if (this.waterMaterial) {
+      this.waterMaterial.uniforms.time.value += deltaTime;
+    }
   }
 
   public getMesh(): THREE.Mesh {
@@ -255,5 +309,11 @@ export class Terrain {
       (waterMesh.material as THREE.Material).dispose();
     });
     this.waterMeshes = [];
+    
+    // Dispose water material
+    if (this.waterMaterial) {
+      this.waterMaterial.dispose();
+      this.waterMaterial = null;
+    }
   }
 }

@@ -22,7 +22,7 @@ export class CollisionManager {
 
   // Get the highest collision point at a given x,z position (only for landing on top)
   public getHeightAt(x: number, z: number, playerRadius: number = 0.5, playerY: number = 0): number {
-    let maxHeight = 0; // Default terrain height
+    let maxHeight = -10; // Default terrain height
 
     for (const box of this.collisionBoxes) {
       // Check if player is within the collision box bounds (with player radius)

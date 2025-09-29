@@ -94,8 +94,8 @@ export class Slime extends Enemy {
     }
   }
 
-  public update(deltaTime: number): void {
-    super.update(deltaTime);
+  public update(deltaTime: number, terrain?: any): void {
+    super.update(deltaTime, terrain);
 
     if (!this.isAlive) return;
 
@@ -137,14 +137,15 @@ export class Slime extends Enemy {
     const bounce = Math.sin(this.hopTimer * bounceSpeed) * bounceHeight;
     
     if (this.model) {
-      this.model.position.y = this.originalY + Math.max(0, bounce);
+      // Use current position Y (which includes terrain height) as base
+      this.model.position.y = this.position.y + Math.max(0, bounce);
     }
     
     // Stop hopping after a short time
     if (this.hopTimer > 0.5) {
       this.isHopping = false;
       if (this.model) {
-        this.model.position.y = this.originalY;
+        this.model.position.y = this.position.y; // Return to terrain level
       }
     }
   }

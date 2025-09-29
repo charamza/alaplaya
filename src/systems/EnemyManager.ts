@@ -30,10 +30,10 @@ export class EnemyManager {
     }
   }
 
-  public update(deltaTime: number): void {
+  public update(deltaTime: number, terrain?: any): void {
     // Update all enemies
     this.enemies.forEach(enemy => {
-      enemy.update(deltaTime);
+      enemy.update(deltaTime, terrain);
     });
 
     // Remove dead enemies after their death animation

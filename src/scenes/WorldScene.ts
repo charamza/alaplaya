@@ -116,14 +116,18 @@ export class WorldScene {
 
   private async spawnTestSlimes(): Promise<void> {
     // Spawn a few test slimes around the player
-    const slimePositions = [
-      new THREE.Vector3(5, 0, 5),
-      new THREE.Vector3(-5, 0, 5),
-      new THREE.Vector3(0, 0, 8),
-      new THREE.Vector3(3, 0, -3)
+    const slimeBasePositions = [
+      { x: 5, z: 5 },
+      { x: -5, z: 5 },
+      { x: 0, z: 8 },
+      { x: 3, z: -3 }
     ];
 
-    for (const position of slimePositions) {
+    for (const basePos of slimeBasePositions) {
+      // Get correct terrain height for slime position
+      const terrainHeight = this.terrain.getHeightAt(basePos.x, basePos.z);
+      const position = new THREE.Vector3(basePos.x, terrainHeight, basePos.z);
+      
       const slime = await this.enemyManager.spawnSlime(position);
       
       // Add slime model to scene
@@ -141,11 +145,14 @@ export class WorldScene {
   }
 
   public update(deltaTime: number, inputManager: InputManager, camera?: ThirdPersonCamera): void {
+    // Update terrain (for water animation)
+    this.terrain.update(deltaTime);
+    
     // Update player
     this.player.update(deltaTime, inputManager, camera, this.terrain, this.collisionManager);
     
-    // Update enemies
-    this.enemyManager.update(deltaTime);
+    // Update enemies (pass terrain for height adjustment)
+    this.enemyManager.update(deltaTime, this.terrain);
     
     // Handle combat - deal damage once per attack
     if (this.player.shouldDealDamage()) {
