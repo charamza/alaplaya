@@ -151,64 +151,101 @@ export class Terrain {
 
   private createWaterBodies(): void {
     // Create one large water body covering the entire terrain
-    const waterGeometry = new THREE.PlaneGeometry(100, 100, 1, 1);
+    const waterGeometry = new THREE.PlaneGeometry(100, 100, 20, 20);
     
-    // Create water shader material
+    // Create simple clear water material
     const waterMaterial = new THREE.ShaderMaterial({
       uniforms: {
         time: { value: 0 },
-        color1: { value: new THREE.Color(0x006994) }, // Deep blue
-        color2: { value: new THREE.Color(0x4a90e2) }, // Light blue
-        waveSpeed: { value: 0.5 },
-        waveScale: { value: 0.02 },
-        opacity: { value: 0.8 }
+        waterColor: { 
+          value: new THREE.Color(0x4a90e2)
+        }, // Lighter blue water
+        waveSpeed: { value: 1 },
+        waveScale: { value: 0.015 },
+        opacity: { value: 0.4 },
+        fresnelPower: { value: 2.0 },
+        sunDirection: { value: new THREE.Vector3(1, 1, 0.5).normalize() }
       },
       vertexShader: `
         uniform float time;
         uniform float waveSpeed;
         uniform float waveScale;
         varying vec2 vUv;
-        varying vec3 vPosition;
+        varying vec3 vNormal;
+        varying vec3 vWorldPosition;
+        varying vec3 vViewPosition;
         
         void main() {
           vUv = uv;
-          vPosition = position;
           
-          // Create gentle wave animation
+          // Simple, gentle wave animation
+          float wave1 = sin(position.x * waveScale + time * waveSpeed) * 0.05;
+          float wave2 = cos(position.y * waveScale * 1.3 + time * waveSpeed * 0.7) * 0.03;
+          float wave3 = sin((position.x + position.y) * waveScale * 0.8 + time * waveSpeed * 1.2) * 0.02;
+          
+          float waveHeight = wave1 + wave2 + wave3;
+          
+          // Apply wave displacement
           vec3 newPosition = position;
-          newPosition.z += sin(position.x * waveScale + time * waveSpeed) * 0.1;
-          newPosition.z += cos(position.y * waveScale * 1.5 + time * waveSpeed * 0.8) * 0.05;
+          newPosition.z += waveHeight;
+          
+          // Calculate normals for lighting
+          float dx = cos(position.x * waveScale + time * waveSpeed) * waveScale * 0.05;
+          float dy = -sin(position.y * waveScale * 1.3 + time * waveSpeed * 0.7) * waveScale * 1.3 * 0.03;
+          
+          vec3 tangent = normalize(vec3(1.0, 0.0, dx));
+          vec3 bitangent = normalize(vec3(0.0, 1.0, dy));
+          vNormal = normalize(cross(tangent, bitangent));
+          
+          // World position for effects
+          vec4 worldPos = modelMatrix * vec4(newPosition, 1.0);
+          vWorldPosition = worldPos.xyz;
+          vViewPosition = (modelViewMatrix * vec4(newPosition, 1.0)).xyz;
           
           gl_Position = projectionMatrix * modelViewMatrix * vec4(newPosition, 1.0);
         }
       `,
       fragmentShader: `
         uniform float time;
-        uniform vec3 color1;
-        uniform vec3 color2;
-        uniform float waveSpeed;
-        uniform float waveScale;
+        uniform vec3 waterColor;
         uniform float opacity;
+        uniform float fresnelPower;
+        uniform vec3 sunDirection;
+        
         varying vec2 vUv;
-        varying vec3 vPosition;
+        varying vec3 vNormal;
+        varying vec3 vWorldPosition;
+        varying vec3 vViewPosition;
         
         void main() {
-          // Create moving wave pattern
-          float wave1 = sin(vPosition.x * waveScale * 2.0 + time * waveSpeed) * 0.5 + 0.5;
-          float wave2 = cos(vPosition.y * waveScale * 1.5 + time * waveSpeed * 0.7) * 0.5 + 0.5;
-          float wave3 = sin((vPosition.x + vPosition.y) * waveScale + time * waveSpeed * 1.2) * 0.5 + 0.5;
+          // Calculate view direction
+          vec3 viewDirection = normalize(cameraPosition - vWorldPosition);
           
-          // Combine waves for color variation
-          float wavePattern = (wave1 + wave2 + wave3) / 3.0;
+          // Fresnel effect for realistic water transparency
+          float fresnel = pow(1.0 - max(0.0, dot(viewDirection, vNormal)), fresnelPower);
           
-          // Mix colors based on wave pattern
-          vec3 finalColor = mix(color1, color2, wavePattern);
+          // Simple depth-based color variation
+          float distFromCenter = length(vWorldPosition.xz);
+          float depth = smoothstep(0.0, 40.0, distFromCenter);
           
-          // Add some fresnel-like effect based on UV
-          float fresnel = pow(1.0 - dot(normalize(vec3(0.0, 0.0, 1.0)), normalize(vec3(vUv - 0.5, 1.0))), 2.0);
-          finalColor = mix(finalColor, color2, fresnel * 0.3);
+          // Base water color with depth variation - much lighter overall
+          vec3 shallowColor = vec3(0.6, 0.8, 0.9); // Very light blue for shallow
+          vec3 deepColor = vec3(0.4, 0.6, 0.9); // Light blue even for deep water
+          vec3 baseColor = mix(shallowColor, deepColor, depth * 0.8); // Reduce depth contrast
           
-          gl_FragColor = vec4(finalColor, opacity);
+          // Sun reflection on water surface
+          vec3 reflectionDir = reflect(-sunDirection, vNormal);
+          float sunReflection = pow(max(0.0, dot(viewDirection, reflectionDir)), 64.0);
+          
+          // Combine effects for lighter water
+          vec3 finalColor = baseColor;
+          finalColor = mix(finalColor, vec3(1.0), sunReflection * 0.4); // Stronger sun highlights
+          finalColor = mix(finalColor, vec3(0.9, 0.95, 1.0), fresnel * 0.3); // Lighter fresnel tint
+          
+          // Make water more transparent overall
+          float finalOpacity = mix(opacity * 0.3, opacity * 0.7, depth) * (1.0 + fresnel * 0.2);
+          
+          gl_FragColor = vec4(finalColor, finalOpacity);
         }
       `,
       transparent: true,
