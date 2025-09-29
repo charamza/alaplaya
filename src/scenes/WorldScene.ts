@@ -69,6 +69,12 @@ export class WorldScene {
     this.sceneGroup.add(this.player.getModel() as THREE.Object3D);
     this.sceneGroup.add(this.debugCube); // Add debug cube
 
+    // Add water bodies to scene
+    const waterMeshes = this.terrain.getWaterMeshes();
+    waterMeshes.forEach(waterMesh => {
+      this.sceneGroup.add(waterMesh);
+    });
+
     // Add debug cube to collision manager
     this.collisionManager.addCollisionBox({
       position: this.debugCube.position.clone(),
@@ -242,5 +248,11 @@ export class WorldScene {
     this.sceneGroup.remove(this.debugCube);
     this.debugCube.geometry.dispose();
     (this.debugCube.material as THREE.Material).dispose();
+
+    // Dispose water meshes (they are disposed in terrain.dispose(), just remove from scene)
+    const waterMeshes = this.terrain.getWaterMeshes();
+    waterMeshes.forEach(waterMesh => {
+      this.sceneGroup.remove(waterMesh);
+    });
   }
 }
