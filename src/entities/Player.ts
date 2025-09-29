@@ -18,6 +18,10 @@ export class Player {
   private jumpForce = 15;
   private gravity = -50;
   
+  // Smooth terrain following
+  private targetGroundHeight = 0;
+  private terrainFollowSpeed = 8; // How fast to adjust to terrain height
+  
   // Animation properties
   private animations: { [key: string]: THREE.AnimationAction } = {};
   private currentAnimation: string = 'idle';
@@ -43,7 +47,7 @@ export class Player {
   private isTargetAliveCallback: ((position: THREE.Vector3) => boolean) | null = null;
 
   constructor() {
-    this.position = new THREE.Vector3(0, 0, 0);
+    this.position = new THREE.Vector3(0, 5, 0); // Start slightly above ground so gravity pulls player down
     this.velocity = new THREE.Vector3();
     this.loader = new GLTFLoader();
   }
@@ -424,22 +428,52 @@ export class Player {
     this.velocity.y += this.gravity * deltaTime;
     this.position.y += this.velocity.y * deltaTime;
 
-    // Ground collision
+    // Calculate ground height
     let groundHeight = 0;
-    
+
     if (terrain) {
-      groundHeight = terrain.getHeightAt(this.position.x, this.position.z);
+      const terrainHeight = terrain.getHeightAt(this.position.x, this.position.z);
+      groundHeight = terrainHeight;
     }
-    
+
     if (collisionManager) {
       const collisionHeight = collisionManager.getHeightAt(this.position.x, this.position.z, 0.5, this.position.y);
       groundHeight = Math.max(groundHeight, collisionHeight);
     }
-    
-    if (this.position.y <= groundHeight) {
+
+    // Update target ground height
+    this.targetGroundHeight = groundHeight;
+
+    // Check if player is falling or jumping
+    const isFalling = this.velocity.y < 0;
+    const isJumping = this.velocity.y > 0;
+
+    if (this.position.y <= groundHeight && isFalling) {
+      // Hit the ground - stop falling
       this.position.y = groundHeight;
       this.velocity.y = 0;
       this.isOnGround = true;
+    } else if (this.isOnGround && !isJumping) {
+      // On ground and not jumping - smoothly follow terrain
+      const heightDiff = this.targetGroundHeight - this.position.y;
+      
+      // Only adjust if the height difference is reasonable (not a cliff)
+      if (Math.abs(heightDiff) < 3.0) {
+        // Smooth interpolation to target height
+        const adjustmentSpeed = this.terrainFollowSpeed * deltaTime;
+        this.position.y += heightDiff * adjustmentSpeed;
+        
+        // Clamp to avoid overshooting
+        if (Math.abs(heightDiff) < 0.1) {
+          this.position.y = this.targetGroundHeight;
+        }
+      } else {
+        // Large height difference - treat as falling off edge
+        this.isOnGround = false;
+      }
+    } else if (isJumping) {
+      // Player is jumping - don't adjust to terrain
+      this.isOnGround = false;
     }
   }
 

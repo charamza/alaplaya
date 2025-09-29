@@ -34,15 +34,18 @@ export class WorldScene {
     this.directionalLight.position.set(50, 50, 25);
     this.directionalLight.castShadow = true;
 
-    // Configure shadow properties for better shadow quality
-    this.directionalLight.shadow.mapSize.width = 4096;
-    this.directionalLight.shadow.mapSize.height = 4096;
-    this.directionalLight.shadow.camera.near = 0.5;
-    this.directionalLight.shadow.camera.far = 200;
-    this.directionalLight.shadow.camera.left = -50;
-    this.directionalLight.shadow.camera.right = 50;
-    this.directionalLight.shadow.camera.top = 50;
-    this.directionalLight.shadow.camera.bottom = -50;
+    // Configure shadow properties for better shadow quality and reduced artifacts
+    this.directionalLight.shadow.mapSize.width = 2048; // Reduced for better performance
+    this.directionalLight.shadow.mapSize.height = 2048;
+    this.directionalLight.shadow.camera.near = 1;
+    this.directionalLight.shadow.camera.far = 100; // Reduced far plane
+    this.directionalLight.shadow.camera.left = -30;
+    this.directionalLight.shadow.camera.right = 30;
+    this.directionalLight.shadow.camera.top = 30;
+    this.directionalLight.shadow.camera.bottom = -30;
+    // Add shadow bias to reduce shadow acne
+    this.directionalLight.shadow.bias = -0.0005;
+    this.directionalLight.shadow.normalBias = 0.02;
 
     // Create debug cube
     const cubeGeometry = new THREE.BoxGeometry(2, 2, 2);
